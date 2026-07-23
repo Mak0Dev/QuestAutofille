@@ -1,207 +1,543 @@
 /**
  * @name QuestAutofille
  * @author Mak0Dev
- * @description Automatically manages and logs tasks for uncompleted Discord Quests.
- * @version 1.0.0
+ * @description Automatically manages Discord Quests
+ * @version 1.0.1 Fix
  * @website https://github.com/Mak0Dev/QuestAutofille
  */
 
 module.exports = class QuestAutofille {
+
     start() {
-        console.log("[QuestAutofille] Starting script execution...");
-        
+
+        console.log("[QuestAutofille] Starting...");
+
         try {
-            // Your original setup code and environment modifications
+
             if (window.$) {
                 delete window.$;
             }
 
-            let wpRequire = webpackChunkdiscord_app.push([[Symbol()], {}, r => r]);
+
+            let wpRequire = webpackChunkdiscord_app.push([
+                [Symbol()],
+                {},
+                r => r
+            ]);
+
             webpackChunkdiscord_app.pop();
 
-            let ApplicationStreamingStore = Object.values(wpRequire.c).find(x => x?.exports?.Z?.__proto__?.getStreamerActiveStreamMetadata)?.exports?.Z;
-            let RunningGameStore, QuestsStore, ChannelStore, GuildChannelStore, FluxDispatcher, api;
-            
-            if (!ApplicationStreamingStore) {
-                ApplicationStreamingStore = Object.values(wpRequire.c).find(x => x?.exports?.A?.__proto__?.getStreamerActiveStreamMetadata).exports.A;
-                RunningGameStore = Object.values(wpRequire.c).find(x => x?.exports?.Ay?.getRunningGames).exports.Ay;
-                QuestsStore = Object.values(wpRequire.c).find(x => x?.exports?.A?.__proto__?.getQuest).exports.A;
-                ChannelStore = Object.values(wpRequire.c).find(x => x?.exports?.A?.__proto__?.getAllThreadsForParent).exports.A;
-                GuildChannelStore = Object.values(wpRequire.c).find(x => x?.exports?.Ay?.getSFWDefaultChannel).exports.Ay;
-                FluxDispatcher = Object.values(wpRequire.c).find(x => x?.exports?.h?.__proto__?.flushWaitQueue).exports.h;
-                api = Object.values(wpRequire.c).find(x => x?.exports?.Bo?.get).exports.Bo;
-            } else {
-                RunningGameStore = Object.values(wpRequire.c).find(x => x?.exports?.ZP?.getRunningGames).exports.ZP;
-                QuestsStore = Object.values(wpRequire.c).find(x => x?.exports?.Z?.__proto__?.getQuest).exports.Z;
-                ChannelStore = Object.values(wpRequire.c).find(x => x?.exports?.Z?.__proto__?.getAllThreadsForParent).exports.Z;
-                GuildChannelStore = Object.values(wpRequire.c).find(x => x?.exports?.ZP?.getSFWDefaultChannel).exports.ZP;
-                FluxDispatcher = Object.values(wpRequire.c).find(x => x?.exports?.Z?.__proto__?.flushWaitQueue).exports.Z;
-                api = Object.values(wpRequire.c).find(x => x?.exports?.tn?.get).exports.tn; 
+
+            const findModule = (filter) => {
+
+                return Object.values(wpRequire.c)
+                    .find(x => filter(x))?.exports;
+
+            };
+
+
+            let RunningGameStore;
+            let QuestsStore;
+            let ChannelStore;
+            let GuildChannelStore;
+            let FluxDispatcher;
+            let ApplicationStreamingStore;
+            let api;
+
+
+
+            ApplicationStreamingStore =
+                findModule(x =>
+                    x?.exports?.Z?.__proto__?.getStreamerActiveStreamMetadata
+                )?.Z;
+
+
+            RunningGameStore =
+                findModule(x =>
+                    x?.exports?.ZP?.getRunningGames
+                )?.ZP ||
+                findModule(x =>
+                    x?.exports?.Ay?.getRunningGames
+                )?.Ay;
+
+
+
+            QuestsStore =
+                findModule(x =>
+                    x?.exports?.Z?.__proto__?.getQuest
+                )?.Z ||
+                findModule(x =>
+                    x?.exports?.A?.__proto__?.getQuest
+                )?.A;
+
+
+
+            ChannelStore =
+                findModule(x =>
+                    x?.exports?.Z?.__proto__?.getAllThreadsForParent
+                )?.Z;
+
+
+
+            GuildChannelStore =
+                findModule(x =>
+                    x?.exports?.ZP?.getSFWDefaultChannel
+                )?.ZP;
+
+
+
+            FluxDispatcher =
+                findModule(x =>
+                    x?.exports?.Z?.__proto__?.flushWaitQueue
+                )?.Z;
+
+
+
+            api =
+                findModule(x =>
+                    x?.exports?.tn?.get
+                )?.tn ||
+                findModule(x =>
+                    x?.exports?.Bo?.get
+                )?.Bo;
+
+
+
+            if (!QuestsStore || !api) {
+
+                console.error(
+                    "[QuestAutofille] Discord modules not found"
+                );
+
+                return;
+
             }
 
-            const supportedTasks = ["WATCH_VIDEO", "PLAY_ON_DESKTOP", "STREAM_ON_DESKTOP", "PLAY_ACTIVITY", "WATCH_VIDEO_ON_MOBILE"];
-            let quests = [...QuestsStore.quests.values()].filter(x => x.userStatus?.enrolledAt && !x.userStatus?.completedAt && new Date(x.config.expiresAt).getTime() > Date.now() && supportedTasks.find(y => Object.keys((x.config.taskConfig ?? x.config.taskConfigV2).tasks).includes(y)));
-            let isApp = typeof DiscordNative !== "undefined";
 
-            if (quests.length === 0) {
-                console.log("[QuestAutofille] You don't have any uncompleted quests!");
-            } else {
-                let doJob = function() {
-                    const quest = quests.pop();
-                    if (!quest) return;
 
-                    const pid = Math.floor(Math.random() * 30000) + 1000;
-                    
-                    const applicationId = quest.config.application.id;
-                    const applicationName = quest.config.application.name;
-                    const questName = quest.config.messages.questName;
-                    const taskConfig = quest.config.taskConfig ?? quest.config.taskConfigV2;
-                    const taskName = supportedTasks.find(x => taskConfig.tasks[x] != null);
-                    const secondsNeeded = taskConfig.tasks[taskName].target;
-                    let secondsDone = quest.userStatus?.progress?.[taskName]?.value ?? 0;
+            const supportedTasks = [
+                "WATCH_VIDEO",
+                "WATCH_VIDEO_ON_MOBILE",
+                "PLAY_ON_DESKTOP",
+                "STREAM_ON_DESKTOP",
+                "PLAY_ACTIVITY"
+            ];
 
-                    if (taskName === "WATCH_VIDEO" || taskName === "WATCH_VIDEO_ON_MOBILE") {
-                        const maxFuture = 10, speed = 7, interval = 1;
-                        const enrolledAt = new Date(quest.userStatus.enrolledAt).getTime();
-                        let completed = false;
-                        let fn = async () => {          
-                            while (true) {
-                                const maxAllowed = Math.floor((Date.now() - enrolledAt)/1000) + maxFuture;
-                                const diff = maxAllowed - secondsDone;
-                                const timestamp = secondsDone + speed;
-                                if (diff >= speed) {
-                                    const res = await api.post({url: `/quests/${quest.id}/video-progress`, body: {timestamp: Math.min(secondsNeeded, timestamp + Math.random())}});
-                                    completed = res.body.completed_at != null;
-                                    secondsDone = Math.min(secondsNeeded, timestamp);
-                                }
-                                
-                                if (timestamp >= secondsNeeded) {
-                                    break;
-                                }
-                                await new Promise(resolve => setTimeout(resolve, interval * 1000));
+
+
+            let quests = [
+                ...QuestsStore.quests.values()
+            ].filter(q => {
+
+
+                const taskConfig =
+                    q?.config?.taskConfig ??
+                    q?.config?.taskConfigV2;
+
+
+
+                return (
+
+                    q?.userStatus?.enrolledAt &&
+
+                    !q?.userStatus?.completedAt &&
+
+                    q?.config?.expiresAt &&
+
+                    new Date(q.config.expiresAt)
+                        .getTime() > Date.now() &&
+
+                    taskConfig?.tasks &&
+
+                    supportedTasks.some(
+                        t =>
+                        taskConfig.tasks[t]
+                    )
+
+                );
+
+            });
+
+
+
+            console.log(
+                `[QuestAutofille] Found ${quests.length} quests`
+            );
+
+
+
+            if (!quests.length) {
+
+                console.log(
+                    "[QuestAutofille] No quests"
+                );
+
+                return;
+
+            }
+
+
+
+            const isApp =
+                typeof DiscordNative !== "undefined";
+
+
+
+
+            const doJob = async () => {
+
+
+                const quest = quests.pop();
+
+
+                if (!quest) {
+
+                    console.log(
+                        "[QuestAutofille] Finished all quests"
+                    );
+
+                    return;
+
+                }
+
+
+
+                const questName =
+                    quest?.config?.messages?.questName ??
+                    "Unknown Quest";
+
+
+
+                const applicationId =
+                    quest?.config?.application?.id;
+
+
+
+                const applicationName =
+                    quest?.config?.application?.name ??
+                    "Unknown";
+
+
+
+                const taskConfig =
+                    quest.config.taskConfig ??
+                    quest.config.taskConfigV2;
+
+
+
+                const taskName =
+                    supportedTasks.find(
+                        t =>
+                        taskConfig.tasks[t]
+                    );
+
+
+
+                if (!taskName) {
+
+                    console.log(
+                        "[QuestAutofille] Invalid task:",
+                        questName
+                    );
+
+                    return doJob();
+
+                }
+
+
+
+                const secondsNeeded =
+                    taskConfig.tasks[taskName].target;
+
+
+
+                let secondsDone =
+                    quest.userStatus
+                    ?.progress
+                    ?.[taskName]
+                    ?.value ?? 0;
+
+
+
+
+                console.log(
+                    `[QuestAutofille] ${questName}`
+                );
+
+
+
+                /*
+                    VIDEO QUEST
+                */
+
+                if (
+                    taskName === "WATCH_VIDEO" ||
+                    taskName === "WATCH_VIDEO_ON_MOBILE"
+                ) {
+
+
+
+                    while(secondsDone < secondsNeeded) {
+
+
+                        await api.post({
+
+                            url:
+                            `/quests/${quest.id}/video-progress`,
+
+                            body: {
+
+                                timestamp:
+                                Math.min(
+                                    secondsNeeded,
+                                    secondsDone + 10
+                                )
+
                             }
-                            if (!completed) {
-                                await api.post({url: `/quests/${quest.id}/video-progress`, body: {timestamp: secondsNeeded}});
-                            }
-                            console.log(`[QuestAutofille] Quest "${questName}" completed!`);
-                            doJob();
-                        };
-                        fn();
-                        console.log(`[QuestAutofille] Spoofing video for ${questName}.`);
-                    } else if (taskName === "PLAY_ON_DESKTOP") {
-                        if (!isApp) {
-                            console.log("[QuestAutofille] This no longer works in browser for non-video quests. Use the desktop app!");
-                        } else {
-                            api.get({url: `/applications/public?application_ids=${applicationId}`}).then(res => {
-                                const appData = res.body[0];
-                                const exeName = appData.executables.find(x => x.os === "win32").name.replace(">", "");
-                                
-                                const fakeGame = {
-                                    cmdLine: `C:\\Program Files\\${appData.name}\\${exeName}`,
-                                    exeName,
-                                    exePath: `c:/program files/${appData.name.toLowerCase()}/${exeName}`,
-                                    hidden: false,
-                                    isLauncher: false,
-                                    id: applicationId,
-                                    name: appData.name,
-                                    pid: pid,
-                                    pidPath: [pid],
-                                    processName: appData.name,
-                                    start: Date.now(),
-                                };
-                                const realGames = RunningGameStore.getRunningGames();
-                                const fakeGames = [fakeGame];
-                                const realGetRunningGames = RunningGameStore.getRunningGames;
-                                const realGetGameForPID = RunningGameStore.getGameForPID;
-                                RunningGameStore.getRunningGames = () => fakeGames;
-                                RunningGameStore.getGameForPID = (pid) => fakeGames.find(x => x.pid === pid);
-                                FluxDispatcher.dispatch({type: "RUNNING_GAMES_CHANGE", removed: realGames, added: [fakeGame], games: fakeGames});
-                                
-                                let fn = data => {
-                                    let progress = quest.config.configVersion === 1 ? data.userStatus.streamProgressSeconds : Math.floor(data.userStatus.progress.PLAY_ON_DESKTOP.value);
-                                    console.log(`[QuestAutofille] Quest progress: ${progress}/${secondsNeeded}`);
-                                    
-                                    if (progress >= secondsNeeded) {
-                                        console.log(`[QuestAutofille] Quest "${questName}" completed!`);
-                                        
-                                        RunningGameStore.getRunningGames = realGetRunningGames;
-                                        RunningGameStore.getGameForPID = realGetGameForPID;
-                                        FluxDispatcher.dispatch({type: "RUNNING_GAMES_CHANGE", removed: [fakeGame], added: [], games: []});
-                                        FluxDispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", fn);
-                                        
-                                        doJob();
-                                    }
-                                };
-                                FluxDispatcher.subscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", fn);
-                                console.log(`[QuestAutofille] Spoofed your game to ${applicationName}. Wait for ${Math.ceil((secondsNeeded - secondsDone) / 60)} more minutes.`);
-                            });
-                        }
-                    } else if (taskName === "STREAM_ON_DESKTOP") {
-                        if (!isApp) {
-                            console.log("[QuestAutofille] This no longer works in browser. Use the desktop app!");
-                        } else {
-                            let realFunc = ApplicationStreamingStore.getStreamerActiveStreamMetadata;
-                            ApplicationStreamingStore.getStreamerActiveStreamMetadata = () => ({
-                                id: applicationId,
-                                pid,
-                                sourceName: null
-                            });
-                            
-                            let fn = data => {
-                                let progress = quest.config.configVersion === 1 ? data.userStatus.streamProgressSeconds : Math.floor(data.userStatus.progress.STREAM_ON_DESKTOP.value);
-                                console.log(`[QuestAutofille] Quest progress: ${progress}/${secondsNeeded}`);
-                                
-                                if (progress >= secondsNeeded) {
-                                    console.log(`[QuestAutofille] Quest "${questName}" completed!`);
-                                    
-                                    ApplicationStreamingStore.getStreamerActiveStreamMetadata = realFunc;
-                                    FluxDispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", fn);
-                                    
-                                    doJob();
-                                }
-                              };
-                            FluxDispatcher.subscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", fn);
-                            
-                            console.log(`[QuestAutofille] Spoofed your stream to ${applicationName}. Stream any window in VC for ${Math.ceil((secondsNeeded - secondsDone) / 60)} more minutes.`);
-                            console.log("[QuestAutofille] Remember that you need at least 1 other person to be in the VC!");
-                        }
-                    } else if (taskName === "PLAY_ACTIVITY") {
-                        const channelId = ChannelStore.getSortedPrivateChannels()[0]?.id ?? Object.values(GuildChannelStore.getAllGuilds()).find(x => x != null && x.VOCAL.length > 0).VOCAL[0].channel.id;
-                        const streamKey = `call:${channelId}:1`;
-                        
-                        let fn = async () => {
-                            console.log(`[QuestAutofille] Completing quest: ${questName}`);
-                            
-                            while (true) {
-                                const res = await api.post({url: `/quests/${quest.id}/heartbeat`, body: {stream_key: streamKey, terminal: false}});
-                                const progress = res.body.progress.PLAY_ACTIVITY.value;
-                                console.log(`[QuestAutofille] Quest progress: ${progress}/${secondsNeeded}`);
-                                
-                                await new Promise(resolve => setTimeout(resolve, 20 * 1000));
-                                
-                                if (progress >= secondsNeeded) {
-                                    await api.post({url: `/quests/${quest.id}/heartbeat`, body: {stream_key: streamKey, terminal: true}});
-                                    break;
-                                }
-                            }
-                            
-                            console.log(`[QuestAutofille] Quest "${questName}" completed!`);
-                            doJob();
-                        };
-                        fn();
+
+                        });
+
+
+
+                        secondsDone += 10;
+
+
+
+                        console.log(
+                            `[QuestAutofille]
+                            ${secondsDone}/${secondsNeeded}`
+                        );
+
+
+
+                        await new Promise(
+                            r =>
+                            setTimeout(r,1500)
+                        );
+
+
                     }
-                };
+
+
+
+                    console.log(
+                        `[QuestAutofille] Completed ${questName}`
+                    );
+
+
+                    return doJob();
+
+                }
+
+
+
+
+
+
+                /*
+                    DESKTOP GAME
+                */
+
+
+                if(taskName==="PLAY_ON_DESKTOP"){
+
+
+                    if(!isApp){
+
+                        console.log(
+                            "[QuestAutofille] Desktop app required"
+                        );
+
+                        return doJob();
+
+                    }
+
+
+
+                    if(!applicationId){
+
+                        console.log(
+                            "[QuestAutofille] Missing application id"
+                        );
+
+                        return doJob();
+
+                    }
+
+
+
+                    console.log(
+                        `[QuestAutofille] Spoofing ${applicationName}`
+                    );
+
+
+
+                    let pid =
+                    Math.floor(
+                        Math.random()*50000
+                    );
+
+
+
+                    let fakeGame = {
+
+
+                        cmdLine:
+                        `C:\\Program Files\\${applicationName}\\game.exe`,
+
+                        exeName:
+                        "game.exe",
+
+                        exePath:
+                        "game.exe",
+
+                        hidden:false,
+
+                        id:
+                        applicationId,
+
+                        name:
+                        applicationName,
+
+                        pid,
+
+                        pidPath:[pid],
+
+                        processName:
+                        applicationName,
+
+                        start:
+                        Date.now()
+
+                    };
+
+
+
+                    let old =
+                    RunningGameStore.getRunningGames;
+
+
+
+                    RunningGameStore.getRunningGames =
+                    () => [fakeGame];
+
+
+
+                    FluxDispatcher.dispatch({
+
+                        type:
+                        "RUNNING_GAMES_CHANGE",
+
+                        removed:[],
+
+                        added:[fakeGame],
+
+                        games:[fakeGame]
+
+                    });
+
+
+
+                    const listener =
+                    data => {
+
+
+                        let progress =
+                        Math.floor(
+                            data.userStatus
+                            ?.progress
+                            ?.PLAY_ON_DESKTOP
+                            ?.value ?? 0
+                        );
+
+
+
+                        console.log(
+                            `[QuestAutofille]
+                            ${progress}/${secondsNeeded}`
+                        );
+
+
+
+                        if(progress >= secondsNeeded){
+
+
+                            RunningGameStore
+                            .getRunningGames =
+                            old;
+
+
+
+                            FluxDispatcher.unsubscribe(
+                                "QUESTS_SEND_HEARTBEAT_SUCCESS",
+                                listener
+                            );
+
+
+                            console.log(
+                                `[QuestAutofille] Completed ${questName}`
+                            );
+
+
+                            doJob();
+
+                        }
+
+
+                    };
+
+
+
+                    FluxDispatcher.subscribe(
+                        "QUESTS_SEND_HEARTBEAT_SUCCESS",
+                        listener
+                    );
+
+
+
+                    return;
+
+                }
+
+
+
+
+                console.log(
+                    "[QuestAutofille] Unsupported:",
+                    taskName
+                );
+
+
                 doJob();
-            }
-        } catch (err) {
-            console.error("[QuestAutofille] Error running plugin logic:", err);
+
+
+            };
+
+
+
+            doJob();
+
+
         }
+        catch(e){
+
+            console.error(
+                "[QuestAutofille] Error:",
+                e
+            );
+
+        }
+
     }
 
-    stop() {
-        console.log("[QuestAutofille] Stopped.");
-        // Note: Because your script deep-hooks internal store state on start, 
-        // full unpatching dynamically on plugin-stop requires refreshing Discord 
-        // if patches are currently active mid-quest.
+
+
+    stop(){
+
+        console.log(
+            "[QuestAutofille] Stopped"
+        );
+
     }
+
 };
